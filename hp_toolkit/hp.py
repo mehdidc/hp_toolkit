@@ -18,9 +18,12 @@ def preprocessed_params(params, model_class):
     return params
 
 def build_fn(model_class, eval_function,
-             X_train, X_valid, y_train=None, y_valid=None):
+             X_train, X_valid, y_train=None, y_valid=None,
+             default_params=None):
     def fn(params):
         params = preprocessed_params(params, model_class)
+        if default_params is not None:
+            params.update(default_params)
         model = model_class(**params)
         model.fit(X_train, y_train)
         return eval_function(model, X_valid, y_valid)
@@ -33,6 +36,7 @@ def find_best_hp(model_class,
                  y_train=None,
                  y_valid=None,
                  allowed_params=None,
+                 default_params=None,
                  eval_function=None,
                  max_evaluations=10):
 
@@ -42,7 +46,8 @@ def find_best_hp(model_class,
     fn = build_fn(model_class,
                   eval_function,
                   X_train, X_valid,
-                  y_train, y_valid)
+                  y_train, y_valid,
+                  default_params=default_params)
     if allowed_params is None:
         params = model_class.params
     else:

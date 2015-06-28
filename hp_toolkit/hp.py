@@ -10,9 +10,17 @@ class Param(object):
         self.type = type
         self.scale = scale
 
+def preprocessed_params(params, model_class):
+    for k, v in params.items():
+        if k in model_class.params:
+            if model_class.params[k].type == 'int':
+                params[k] = int(v)
+    return params
+
 def build_fn(model_class, eval_function,
              X_train, X_valid, y_train=None, y_valid=None):
     def fn(params):
+        params = preprocessed_params(params, model_class)
         model = model_class(**params)
         model.fit(X_train, y_train)
         return eval_function(model, X_valid, y_valid)
@@ -20,7 +28,7 @@ def build_fn(model_class, eval_function,
 
 def find_best_hp(model_class,
                  minimize_fn,
-                 X_train, 
+                 X_train,
                  X_valid,
                  y_train=None,
                  y_valid=None,
@@ -31,20 +39,24 @@ def find_best_hp(model_class,
     parameter_definition = dict()
     if eval_function is None:
         eval_function = lambda model, X_valid, y_valid: (model.predict(X_valid)!=y_valid).mean()
-    fn = build_fn(model_class, 
+    fn = build_fn(model_class,
                   eval_function,
-                  X_train, X_valid, 
+                  X_train, X_valid,
                   y_train, y_valid)
     if allowed_params is None:
         params = model_class.params
     else:
         params = {p:model_class.params[p] for p in allowed_params}
     parameters, loss = minimize_fn((fn, max_evaluations, params))
+    parameters = preprocessed_params(parameters, model_class)
     return parameters, loss
 
 from hyperopt import hp, fmin, tpe, Trials
 from hyperopt.mongoexp import MongoTrials
-from pathos.multiprocessing import ProcessingPool as Pool
+try:
+    from pathos.multiprocessing import ProcessingPool as Pool
+except ImportError:
+    from multiprocessing import Pool
 
 def parallelizer(pool_size=1):
     def wrap(minimizer):
@@ -116,8 +128,8 @@ if __name__ == "__main__":
     X, y = make_classification(n_samples=1000, n_features=20,
                                n_informative=2, n_redundant=2)
     X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.1)
-    best_hp = find_best_hp(RandomForest, 
+    best_hp = find_best_hp(RandomForest,
                            parallelizer(20)(minimize_fn_with_hyperopt),
-                           X_train, X_valid, 
+                           X_train, X_valid,
                            y_train, y_valid)
     print(best_hp)

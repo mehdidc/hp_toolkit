@@ -114,7 +114,7 @@ def minimize_fn_with_hyperopt(params):
 
 def incorporate_params(inst, params):
     for k, v in inst.params.items():
-        setattr(inst, k, params.get(k, v).initial)
+        setattr(inst, k, params.get(k, v.initial))
     inst.__dict__.update(params)
 
 class Model(object):

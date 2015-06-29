@@ -36,6 +36,7 @@ def find_best_hp(model_class,
                  y_train=None,
                  y_valid=None,
                  allowed_params=None,
+                 not_allowed_params=None,
                  default_params=None,
                  eval_function=None,
                  max_evaluations=10):
@@ -52,6 +53,9 @@ def find_best_hp(model_class,
         params = model_class.params
     else:
         params = {p:model_class.params[p] for p in allowed_params}
+    if not_allowed_params is not None:
+        for p in not_allowed_params:
+            del params[p]
     parameters, loss = minimize_fn((fn, max_evaluations, params))
     parameters = preprocessed_params(parameters, model_class)
     return parameters, loss

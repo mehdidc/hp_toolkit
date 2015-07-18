@@ -26,10 +26,18 @@ def build_fn(model_class, eval_function,
             params.update(default_params)
         model = model_class(**params)
         model.fit(X_train, y_train)
-        return eval_function(model, X_valid, y_valid)
+        
+        loss = eval_function(model, X_valid, y_valid)
+        if np.isnan(loss):
+            return dict(status='fail', hp=params)
+        else:
+            return dict(loss=loss,
+                        status="ok",
+                        hp=params)
     return fn
 
-def find_best_hp(model_class,
+
+def find_all_hp(model_class,
                  minimize_fn,
                  X_train,
                  X_valid,
@@ -40,7 +48,6 @@ def find_best_hp(model_class,
                  default_params=None,
                  eval_function=None,
                  max_evaluations=10):
-
     parameter_definition = dict()
     if eval_function is None:
         eval_function = lambda model, X_valid, y_valid: (model.predict(X_valid)!=y_valid).mean()
@@ -56,8 +63,17 @@ def find_best_hp(model_class,
     if not_allowed_params is not None:
         for p in not_allowed_params:
             del params[p]
-    parameters, loss = minimize_fn((fn, max_evaluations, params))
-    parameters = preprocessed_params(parameters, model_class)
+    all_params, all_scores = minimize_fn((fn, max_evaluations, params))
+
+    for i, param in enumerate(all_params):
+        all_params[i] = preprocessed_params(param, model_class)
+
+    return all_params, all_scores
+
+def find_best_hp(*args, **kwargs):
+    all_params, all_scores = find_all_hp(*args, **kwargs)
+    argmin = min(range(len(all_params)), key=lambda i:all_scores[i])
+    parameters, loss = all_params[argmin], all_scores[argmin]
     return parameters, loss
 
 from hyperopt import hp, fmin, tpe, Trials
@@ -109,7 +125,7 @@ def minimize_fn_with_hyperopt(params):
     for param_name, param_value in parameter_definition.items():
         if param_value.type == 'choice':
             result[param_name] = param_value.interval[result[param_name]]
-    return result, min(trials.losses())
+    return [r.get("hp") for r in trials.results if r.get("status")=='ok'], trials.losses()
 
 
 def incorporate_params(inst, params):

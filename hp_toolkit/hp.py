@@ -1,6 +1,11 @@
 import numpy as np
 
 from hyperopt import hp, fmin, tpe, Trials
+from hyperopt.pyll.stochastic import sample
+import logging
+
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+
 
 
 def classification_error(model, X, y):
@@ -38,12 +43,16 @@ def build_fn(model_class, eval_function,
         params = preprocessed_params(params, model_class)
         if default_params is not None:
             params.update(default_params)
+
+        logging.info("Trying : {0}".format(str(params)))
         model = model_class(**params)
         model.fit(X_train, y_train)
         loss = eval_function(model, X_valid, y_valid)
         if np.isnan(loss):
+            logging.warning("NaN in the loss with  : {0}".format(str(params)))
             return dict(status='fail', hp=params)
         else:
+            logging.info("Evaluation of {0} : {1}".format(str(params), loss))
             return dict(loss=loss,
                         status="ok",
                         hp=params)
@@ -69,7 +78,7 @@ def find_all_hp(model_class,
     if allowed_params is None:
         params = model_class.params
     else:
-        params = {p: model_class.params[p] for p in allowed_params}
+        params = dict((p, model_class.params[p]) for p in allowed_params)
     if not_allowed_params is not None:
         for p in not_allowed_params:
             del params[p]
@@ -105,6 +114,19 @@ def parallelizer(pool_size=1):
 
 def minimize_fn_with_hyperopt(params):
     fn, max_evaluations, parameter_definition = params
+    space = build_hp_space()
+    trials = Trials()
+    result = fmin(fn, space, algo=tpe.suggest,
+                  max_evals=max_evaluations,
+                  trials=trials)
+    for param_name, param_value in parameter_definition.items():
+        if param_value.type == 'choice':
+            result[param_name] = param_value.interval[result[param_name]]
+    hyper_parameters = [r.get("hp")
+                        for r in trials.results if r.get("status") == 'ok']
+    return hyper_parameters, trials.losses()
+
+def build_hp_space(parameter_definition):
     space = dict()
     for param_name, param_value in parameter_definition.items():
         if param_value.type == 'real':
@@ -133,22 +155,33 @@ def minimize_fn_with_hyperopt(params):
                                                    b * np.log(d))
         elif param_value.type == 'choice':
             space[param_name] = hp.choice(param_name, param_value.interval)
-    trials = Trials()
-    result = fmin(fn, space, algo=tpe.suggest,
-                  max_evals=max_evaluations,
-                  trials=trials)
-    for param_name, param_value in parameter_definition.items():
-        if param_value.type == 'choice':
-            result[param_name] = param_value.interval[result[param_name]]
-    hyper_parameters = [r.get("hp")
-                        for r in trials.results if r.get("status") == 'ok']
-    return hyper_parameters, trials.losses()
+    return space
 
 
 def incorporate_params(inst, params):
     for k, v in inst.params.items():
         setattr(inst, k, params.get(k, v.initial))
     inst.__dict__.update(params)
+
+
+def instantiate_random_model(model_class, default_params=None):
+    params = build_hp_space(model_class.params)
+    params = sample(params)
+    params = preprocessed_params(params, model_class)
+    if default_params is not None:
+        params.update(default_params)
+    model = model_class(**params)
+    return model
+
+
+def instantiate_default_model(model_class, default_params=None):
+    params = dict((name, param.initial)
+                  for name, param in model_class.params.items())
+    params = preprocessed_params(params, model_class)
+    if default_params is not None:
+        params.update(default_params)
+    model = model_class(**params)
+    return model
 
 
 class Model(object):

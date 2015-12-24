@@ -28,6 +28,10 @@ class Param(object):
         self.scale = scale
 
 
+def make_constant_param(value):
+    return Param(initial=value, interval=[value],
+                 type='choice')
+
 def preprocessed_params(params, model_class):
     for k, v in params.items():
         if k in model_class.params:
@@ -38,7 +42,8 @@ def preprocessed_params(params, model_class):
 
 def build_fn(model_class, eval_function,
              X_train, X_valid, y_train=None, y_valid=None,
-             default_params=None):
+             default_params=None,
+             model_init_func=None):
     def fn(params):
         params = preprocessed_params(params, model_class)
         if default_params is not None:
@@ -46,6 +51,14 @@ def build_fn(model_class, eval_function,
 
         logging.info("Trying : {0}".format(str(params)))
         model = model_class(**params)
+        if model_init_func is not None:
+            opt = dict(
+                    X_train=X_train,
+                    X_valid=X_valid,
+                    y_train=y_train,
+                    y_valid=y_valid
+            )
+            model = model_init_func(model, **opt)
         model.fit(X_train, y_train)
         loss = eval_function(model, X_valid, y_valid)
         if np.isnan(loss):
@@ -69,12 +82,14 @@ def find_all_hp(model_class,
                 not_allowed_params=None,
                 default_params=None,
                 eval_function=classification_error,
+                model_init_func=None,
                 max_evaluations=10):
     fn = build_fn(model_class,
                   eval_function,
                   X_train, X_valid,
                   y_train, y_valid,
-                  default_params=default_params)
+                  default_params=default_params,
+                  model_init_func=model_init_func)
     if allowed_params is None:
         params = model_class.params
     else:
@@ -114,7 +129,7 @@ def parallelizer(pool_size=1):
 
 def minimize_fn_with_hyperopt(params):
     fn, max_evaluations, parameter_definition = params
-    space = build_hp_space()
+    space = build_hp_space(parameter_definition)
     trials = Trials()
     result = fmin(fn, space, algo=tpe.suggest,
                   max_evals=max_evaluations,

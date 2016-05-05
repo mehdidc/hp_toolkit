@@ -7,13 +7,12 @@ import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 
-
 def classification_error(model, X, y):
     return (model.predict(X) != y).mean()
 
 
 default_eval_functions = {
-        "error": lambda model, X, y: classification_error
+        "error": classification_error
 }
 
 
@@ -32,12 +31,17 @@ def make_constant_param(value):
     return Param(initial=value, interval=[value],
                  type='choice')
 
-def preprocessed_params(params, model_class):
-    for k, v in params.items():
-        if k in model_class.params:
-            if model_class.params[k].type == 'int':
-                params[k] = int(v)
-    return params
+
+def preprocessed_params(params_inst, params):
+    for k, v in params_inst.items():
+        if k in params:
+            if params[k].type == 'int':
+                params_inst[k] = int(v)
+    return params_inst
+
+
+def preprocessed_params_from_model_class(params, model_class):
+    return preprocessed_params(params, model_class.params)
 
 
 def build_fn(model_class, eval_function,
@@ -45,7 +49,7 @@ def build_fn(model_class, eval_function,
              default_params=None,
              model_init_func=None):
     def fn(params):
-        params = preprocessed_params(params, model_class)
+        params = preprocessed_params_from_model_class(params, model_class)
         if default_params is not None:
             params.update(default_params)
 
@@ -100,7 +104,7 @@ def find_all_hp(model_class,
     all_params, all_scores = minimize_fn((fn, max_evaluations, params))
 
     for i, param in enumerate(all_params):
-        all_params[i] = preprocessed_params(param, model_class)
+        all_params[i] = preprocessed_params_from_model_class(param, model_class)
 
     return all_params, all_scores
 
@@ -179,24 +183,32 @@ def incorporate_params(inst, params):
     inst.__dict__.update(params)
 
 
-def instantiate_random_model(model_class, default_params=None):
-    params = build_hp_space(model_class.params)
-    params = sample(params)
-    params = preprocessed_params(params, model_class)
+def instantiate_random(params, default_params=None, rng=None):
+    params_inst = build_hp_space(params)
+    params_inst = sample(params_inst, rng=rng)
+    params_inst = preprocessed_params(params_inst, params)
     if default_params is not None:
-        params.update(default_params)
-    model = model_class(**params)
-    return model
+        params_inst.update(default_params)
+    return params_inst
+
+
+def instantiate_random_model(model_class, default_params=None):
+    params = instantiate_random(model_class.params, default_params=default_params)
+    return model_class(**params)
+
+
+def instantiate_default(params, default_params=None):
+    params_inst = dict((name, param.initial)
+                       for name, param in params.items())
+    params_inst = preprocessed_params(params_inst, params)
+    if default_params is not None:
+        params_inst.update(default_params)
+    return params_inst
 
 
 def instantiate_default_model(model_class, default_params=None):
-    params = dict((name, param.initial)
-                  for name, param in model_class.params.items())
-    params = preprocessed_params(params, model_class)
-    if default_params is not None:
-        params.update(default_params)
-    model = model_class(**params)
-    return model
+    params = instantiate_default(model_class.params, default_params=default_params)
+    return model_class(**params)
 
 
 class Model(object):

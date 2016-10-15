@@ -23,18 +23,23 @@ def get_from_trials(trials, name):
 
 if __name__ == '__main__':
     from hyperopt import hp, fmin, tpe, rand, Trials, STATUS_OK # NOQA
+    import numpy as np
+
     space = hp.uniform('a', 0, 1)
 
     def fn(x):
+        print(x)
         return {'loss': x**2-4, 'status': STATUS_OK, 'x': x}
 
+    np.random.seed(11)
     trials = Trials()
     best = fmin(
         fn=fn,
         space=space,
+        algo=rand.suggest,
+        rseed=1,
         max_evals=10,
-        algo=rand.suggest, trials=trials,
-        rseed=1)
+        trials=trials)
 
     result = get_from_trials(trials, 'result')
 
@@ -45,8 +50,8 @@ if __name__ == '__main__':
     trials = Trials()
     best = fmin(fn=feed(fn, inputs, outputs),
                 space=space, algo=rand.suggest, max_evals=15,
-                trials=trials,
-                rseed=1)
+                rseed=2,
+                trials=trials)
 
     result = get_from_trials(trials, 'result')
     inputs = [r['x'] for r in result]

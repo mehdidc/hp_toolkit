@@ -104,7 +104,7 @@ class DensityFitSearch(BaseSearch):
         except Exception:
             keep = self.keep
 
-        if (self.rng.uniform() <= epsilon or 
+        if (self.rng.uniform() <= epsilon or
             (self.keep != 'all' and len(bestn) < keep)):
             hp = instantiate_random(self.space, rng=self.rng)
             return hp
@@ -187,6 +187,9 @@ class Elite(BaseSearch):
                  subset_size=1, granularity=2, keep=1,
                  burnin=1,
                  random_state=None):
+        """
+        MAP-Elite implementation for hyperopt.
+        """
         super(Elite, self).__init__(space, random_state=random_state)
         self.subset_size = subset_size
         self.feature_subsets = list(combinations(space.keys(),
@@ -256,17 +259,30 @@ class Elite(BaseSearch):
 if __name__ == "__main__":
     from hp_toolkit.hp import Param
     space = {
-        "n": Param(initial=1, interval=[1, 20], type='int')
+        "x1": Param(initial=1, interval=[-5, 10], type='real'),
+        "x2": Param(initial=1, interval=[0, 15], type='real')
     }
-
     def evaluate(vals):
-        return vals["n"] / 20.
-
-    search = Elite(space, burnin=10, keep=1)
-
-    for i in range(100):
+        x1 = vals['x1']
+        x2 = vals['x2']
+        a = 1.
+        b = 5.1 / (4.*np.pi**2)
+        c = 5. / np.pi
+        r = 6.
+        s = 10.
+        t = 1. / (8.*np.pi)
+        ret  = a*(x2-b*x1**2+c*x1-r)**2+s*(1-t)*np.cos(x1)+s
+        return ret
+    search = Elite(space,
+                   subset_size=2,
+                   granularity=10,
+                   keep=1,
+                   burnin=1)
+    search = RandomSearch(space)
+    #search = DensityFitSearch(space)
+    for i in range(2000):
         x = search.sample_next()
         y = evaluate(search.preprocess(x))
         search.update(x, y)
-        print(x)
-    print(search.bests())
+    print(np.argmin(search.hist['y']))
+    print(np.min(search.hist['y']))

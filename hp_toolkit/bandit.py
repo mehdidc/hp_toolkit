@@ -1,6 +1,11 @@
 # Source : https://jeremykun.com/2013/10/28/optimism-in-the-face-of-uncertainty-the-ucb1-algorithm/
 import math
+from functools import partial
 from collections import defaultdict
+from sklearn.utils import check_array, check_X_y
+import numpy as np
+
+from sklearn.preprocessing import FunctionTransformer
 
 class Bandit(object):
     
@@ -47,14 +52,43 @@ class UCB(Bandit):
 def upperBound(step, nplays):
     return math.sqrt(2 * math.log(step + 1) / nplays)
 
+class Thompson(Bandit):
+
+    def __init__(self, model):
+        super(Thompson, self).__init__()
+        self.model = model
+        self.hist_actions = []
+        self.hist_rewards = []
+
+    def update(self, action, reward, partial_fit=False):
+        self.actions.add(action)
+        self.hist_actions.append(action)
+        self.hist_rewards.append(reward)
+        if partial_fit:
+            assert hasattr(model, 'partial_fit')
+            self.model.partial_fit([action], [reward])
+        else:
+            a = self.hist_actions
+            r = self.hist_rewards
+            self.model.fit(a, r)
+
+    def get_action_scores(self):
+        predict = self.model.sample_y if hasattr(self.model, 'sample_y') else self.model.predict
+        actions = list(self.actions)
+        rewards = predict(actions)
+        return {a: r for a, r in zip(actions, rewards)}
+
 if __name__ == '__main__':
-    import numpy as np
-    ucb = UCB()
-    simulate = {'a': lambda:np.random.normal(5), 'b': lambda:np.random.normal(1)}
-    for _ in range(1):
-        ucb.update('a', simulate['a']())
-        ucb.update('b', simulate['b']())
-    for _ in range(10):
-        action = ucb.next()
-        ucb.update(action, simulate[action]())
-        action = ucb.next()
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.preprocessing import Imputer
+    from helpers import DictVectorizer
+    from frozendict import frozendict
+    fd = frozendict
+    gp = make_pipeline(DictVectorizer(), Imputer(), GaussianProcessRegressor())
+    bdt = Thompson(gp)
+    bdt.update(fd({'a': 1, 'b': 3}), 5)
+    bdt.update(fd({'a': 2}), 5)
+    bdt.update(fd({'a': 3, 'b': 4}), 8)
+    print(bdt.get_action_scores())
